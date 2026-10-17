@@ -25,20 +25,13 @@ import {
   LockKeyhole,
   AlertCircle,
 } 
-from "lucide-react";import "./style.css";
+from "lucide-react";
+import "./style.css";
+import type { LoanForm, InputField } from "./types/loan";
+import { validateField, firstInvalidField, personalFields, financeFields, allowedTenures } from "./utils/validation";
 
 type Page = "home" | "calculator" | "apply" | "tracking" | "insights";
-type FormData = {
-  name: string;
-  email: string;
-  phone: string;
-  income: string;
-  employment: string;
-  existingEmi: string;
-  requested: string;
-  tenure: string;
-  consent: boolean;
-};
+type FormData = LoanForm;
 type Decision = {
   status: "Preliminary eligible" | "Manual review" | "Outside demo criteria";
   reason: string;
@@ -79,6 +72,8 @@ function App() {
   const [months, setMonths] = useState(36);
   const [form, setForm] = useState<FormData>(initial);
   const [step, setStep] = useState(1);
+  const [touched, setTouched] = useState<Partial<Record<keyof FormData, boolean>>>({});
+  const [attempted, setAttempted] = useState(false);
   const [decision, setDecision] = useState<Decision | null>(null);
   const [events, setEvents] = useState<Record<string, number>>({ homepage: 1 });
   function go(p: Page) {
@@ -94,7 +89,18 @@ function App() {
     earning = Number(form.income) || 0,
     existing = Number(form.existingEmi) || 0,
     period = Number(form.tenure);
+  function validateStep(fields: readonly (keyof FormData)[]): boolean {
+    setAttempted(true);
+    const invalid = firstInvalidField(form, fields);
+    if (invalid) {
+      document.getElementById(`field-${invalid}`)?.focus();
+      return false;
+    }
+    setAttempted(false);
+    return true;
+  }
   function decide() {
+    if (!validateStep([...personalFields, ...financeFields])) return;
     const projected = emi(request, interest, period);
     const room = earning * 0.45 - existing;
     const max = Math.max(0, Math.floor(room / emi(1, interest, period)));
@@ -122,51 +128,21 @@ function App() {
     setStep(3);
     setEvents((e) => ({ ...e, submitted: (e.submitted || 0) + 1 }));
   }
-type InputField = Exclude<keyof FormData, "consent" | "employment" | "tenure">;
-
-function getFieldError(key: InputField): string {
-  const value = form[key].trim();
-
-  if (!value) return "";
-
-  switch (key) {
-    case "name":
-      return "";
-
-    case "email":
-      return /^\S+@\S+\.\S+$/.test(value) ? "" : "Enter a valid email address.";
-
-    case "phone":
-      return /^[0-9]{10}$/.test(value)
-        ? ""
-        : "Enter exactly 10 digits without a country code.";
-
-    case "income":
-    case "requested":
-      return Number.isFinite(Number(value)) && Number(value) > 0
-        ? ""
-        : "Enter a valid amount greater than zero.";
-
-    case "existingEmi":
-      return Number.isFinite(Number(value)) && Number(value) >= 0
-        ? ""
-        : "Enter zero or a positive amount.";
-  }
-}
-
 const input = (
   label: string,
   key: InputField,
   placeholder: string,
   type = "text",
 ) => {
-  const error = getFieldError(key);
+  const error = touched[key] || attempted ? validateField(form, key) : "";
   const errorId = `${key}-error`;
 
   return (
     <label className="field">
       <span>{label}</span>
       <input
+        id={`field-${key}`}
+        onBlur={() => setTouched((previous) => ({ ...previous, [key]: true }))}
         value={form[key]}
         onChange={(event) => update(key, event.target.value)}
         placeholder={placeholder}
@@ -190,7 +166,7 @@ const input = (
             <Wallet size={21} />
           </span>
           <span>
-            Lend<span className="brand-blue">Flow</span>
+            Credi<span className="brand-blue">Flow</span>
             <small>DIGITAL LENDING DEMO</small>
           </span>
         </button>
@@ -228,7 +204,7 @@ const input = (
       <div className="body">
         <header className="top">
           <div className="mobilelogo">
-            <Wallet size={19} /> LendFlow
+            <Wallet size={19} /> CrediFlow
           </div>
           <div className="crumb">
             Product /{" "}
@@ -350,7 +326,7 @@ const input = (
               </div>
               <div className="how">
                 <div className="section-heading">
-                  <h2>How LendFlow works</h2>
+                  <h2>How CrediFlow works</h2>
                 </div>
                 <div className="steps">
                   {[
@@ -545,12 +521,9 @@ const input = (
                       <div className="formactions">
                         <button
                           className="primary"
-                          disabled={
-                            !form.name.trim() ||
-                            !/^\S+@\S+\.\S+$/.test(form.email) ||
-                            !/^[0-9]{10}$/.test(form.phone)
-                          }
-                          onClick={() => setStep(2)}
+                          onClick={() => {
+                            if (validateStep(personalFields)) setStep(2);
+                          }}
                         >
                           Continue <ArrowRight size={17} />
                         </button>
@@ -586,10 +559,11 @@ const input = (
                         <label className="field">
                           <span>Repayment tenure</span>
                           <select
+                            id="field-tenure"
                             value={form.tenure}
                             onChange={(e) => update("tenure", e.target.value)}
                           >
-                            {[6, 12, 18, 24, 30, 36, 42, 48, 54, 60].map(
+                            {allowedTenures.map(
                               (m) => (
                                 <option value={m} key={m}>
                                   {m} months
@@ -601,7 +575,10 @@ const input = (
                       </div>
                       <label className="checkline">
                         <input
+                          id="field-consent"
                           type="checkbox"
+                          aria-invalid={attempted && Boolean(validateField(form, "consent"))}
+                          aria-describedby={attempted && !form.consent ? "consent-error" : undefined}
                           checked={form.consent}
                           onChange={(e) => update("consent", e.target.checked)}
                         />
@@ -611,21 +588,18 @@ const input = (
                           approval.
                         </span>
                       </label>
+                      {attempted && !form.consent && (
+                        <p id="consent-error" className="field-error">{validateField(form, "consent")}</p>
+                      )}
                       <div className="formactions">
                         <button
                           className="secondary"
-                          onClick={() => setStep(1)}
+                          onClick={() => { setAttempted(false); setStep(1); }}
                         >
                           <ArrowLeft size={17} /> Back
                         </button>
                         <button
                           className="primary"
-                          disabled={
-                            !form.consent ||
-                            earning <= 0 ||
-                            request <= 0 ||
-                            existing < 0
-                          }
                           onClick={decide}
                         >
                           Check demo eligibility <ArrowRight size={17} />
