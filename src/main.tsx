@@ -38,6 +38,8 @@ import { evaluateDemoEligibility } from "./services/demoEligibility";
 
 import { saveDraft, loadDraft, deleteDraft } from "./services/draftStorage";
 
+import { initialJourney, recordJourney, journeyRates } from "./services/analytics";
+
 type Page = "home" | "calculator" | "apply" | "tracking" | "insights";
 type FormData = LoanForm;
 const formatINR = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
@@ -72,7 +74,10 @@ function App() {
   const [attempted, setAttempted] = useState(false);
   const [decision, setDecision] = useState<Submission | null>(null);
   const [events, setEvents] = useState<Record<string, number>>({ homepage: 1 });
+  const [journey, setJourney] = useState(initialJourney);
+  const rates = journeyRates(journey);
   function go(p: Page) {
+    if (p === "apply") setJourney(j => recordJourney(j, "opened"));
     setPage(p);
     setNav(false);
     setEvents((e) => ({ ...e, [p]: (e[p] || 0) + 1 }));
@@ -84,6 +89,7 @@ function App() {
   function validateStep(fields: readonly (keyof FormData)[]): boolean {
     setAttempted(true);
     const invalid = firstInvalidField(form, fields);
+    setJourney(j => recordJourney(j, invalid ? "validation_failed" : "validation_passed"));
     if (invalid) {
       document.getElementById(`field-${invalid}`)?.focus();
       return false;
@@ -95,6 +101,7 @@ function App() {
     if (!validateStep([...personalFields, ...financeFields])) return;
     setDecision(snapshotSubmission(form, evaluateDemoEligibility(form),
       crypto.randomUUID(), new Date().toISOString()));
+    setJourney(j => recordJourney(j, "submitted"));
     setStep(3);
     setEvents((e) => ({ ...e, submitted: (e.submitted || 0) + 1 }));
   }
@@ -516,7 +523,10 @@ const input = (
                         <button
                           className="primary"
                           onClick={() => {
-                            if (validateStep(personalFields)) setStep(2);
+                            if (validateStep(personalFields)) {
+                              setJourney(j => recordJourney(j, "personal_completed"));
+                              setStep(2);
+                            }
                           }}
                         >
                           Continue <ArrowRight size={17} />
@@ -756,17 +766,16 @@ const input = (
                   <small>Intent signal</small>
                 </div>
                 <div className="metric">
-                  <span>Demo completion ratio</span>
-                  <strong>
-                    {events.apply
-                      ? Math.round(
-                          ((events.submitted || 0) / (events.apply || 1)) * 100,
-                        )
-                      : 0}
-                    %
-                  </strong>
-                  <small>Submissions / visits, may exceed 100%</small>
+                  <span>Observed journey completion</span>
+                  <strong>{rates.completion === null ? "—" : `${rates.completion}%`}</strong>
+                  <small>One journey per page load; repeated submissions count once</small>
                 </div>
+              </div>
+              <div className="panel insight-panel">
+                <h2>Observed application milestones</h2>
+                <p>Application opened: {Number(journey.opened)} → Personal details completed: {Number(journey.personalCompleted)} → Submitted: {Number(journey.submitted)}</p>
+                <p>Failed validation attempts: {journey.validationFailures} / {journey.validationAttempts} ({rates.validationFailure === null ? "no attempts yet" : `${rates.validationFailure}%`}). An attempt is a Continue or Submit validation check.</p>
+                <p>This is one local journey, reset on refresh. Unfinished milestones indicate current progress, not confirmed abandonment. Page visits and repeated simulations above are activity counts, not unique borrowers.</p>
               </div>
               <div className="panel insight-panel">
                 <h2>Product hypothesis & experiment</h2>
