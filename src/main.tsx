@@ -36,6 +36,8 @@ import type { Submission } from "./services/submission";
 import { calculateEmi as emi } from "./utils/finance";
 import { evaluateDemoEligibility } from "./services/demoEligibility";
 
+import { saveDraft, loadDraft, deleteDraft } from "./services/draftStorage";
+
 type Page = "home" | "calculator" | "apply" | "tracking" | "insights";
 type FormData = LoanForm;
 const formatINR = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
@@ -64,6 +66,7 @@ function App() {
   const [amount, setAmount] = useState(300000);
   const [months, setMonths] = useState(36);
   const [form, setForm] = useState<FormData>(initial);
+  const [draftMessage, setDraftMessage] = useState("");
   const [step, setStep] = useState(1);
   const [touched, setTouched] = useState<Partial<Record<keyof FormData, boolean>>>({});
   const [attempted, setAttempted] = useState(false);
@@ -433,6 +436,29 @@ const input = (
                   eligibility result.
                 </p>
               </div>
+              <div className="panel draft-controls">
+                <p>Save synthetic details on this browser to continue later. Use the same address and port when returning. Consent must be confirmed again after resuming.</p>
+                <div className="draft-actions">
+                  {step !== 3 && <button type="button" className="btn secondary" onClick={() => {
+                    const result = saveDraft(form);
+                    setDraftMessage(result.ok ? "Draft saved in this browser. Later edits require saving again." : result.message);
+                  }}>Save draft</button>}
+                  <button type="button" className="btn secondary" onClick={() => {
+                    if (!window.confirm("Replace the current editable details with your saved draft?")) return;
+                    const result = loadDraft();
+                    if (result.ok && result.form) {
+                      setForm(result.form); setStep(1); setTouched({}); setAttempted(false);
+                      setDraftMessage("Saved draft resumed. Review your details and confirm consent again.");
+                    } else setDraftMessage(result.ok ? "No draft available." : result.message);
+                  }}>Resume saved draft</button>
+                  <button type="button" className="btn secondary" onClick={() => {
+                    if (!window.confirm("Delete the saved draft from this browser? Current details will remain on screen.")) return;
+                    const result = deleteDraft();
+                    setDraftMessage(result.ok ? "Saved draft deleted. Current details remain on screen." : result.message);
+                  }}>Delete saved draft</button>
+                </div>
+                <p role="status" aria-live="polite">{draftMessage}</p>
+              </div>
               <div className="application">
                 <div className="progress">
                   {[
@@ -456,8 +482,7 @@ const input = (
                     <>
                       <h2>Tell us about yourself</h2>
                       <p>
-                        We'll use this information only within your current
-                        browser session.
+                        Use synthetic details only. Details stay in this page unless you choose Save draft.
                       </p>
                       <div className="formgrid">
                         {input("Full name", "name", "e.g. Aanya Mehta")}

@@ -17,3 +17,5 @@
 .outcomeicon.review { background: #fff4d6; color: #946200; }
 .outcomeicon.outside { background: #fff0ee; color: #b42318; }
 .tracktop h2, .outcome .small-label { overflow-wrap: anywhere; }
+
+.draft-controls{margin-bottom:20px;padding:20px}.draft-actions{display:flex;flex-wrap:wrap;gap:10px}.draft-controls p{line-height:1.6}.draft-controls [role="status"]:empty{display:none}

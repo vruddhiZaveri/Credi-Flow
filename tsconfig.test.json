@@ -13,6 +13,7 @@
     "src/utils/validation.ts",
     "src/services/submission.ts",
     "src/utils/finance.ts",
-    "src/services/demoEligibility.ts"
+    "src/services/demoEligibility.ts",
+    "src/services/draftStorage.ts"
   ]
 }
