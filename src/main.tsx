@@ -31,17 +31,14 @@ import type { LoanForm, InputField } from "./types/loan";
 import { validateField, firstInvalidField, personalFields, financeFields, allowedTenures } from "./utils/validation";
 
 import { snapshotSubmission, demoPolicy } from "./services/submission";
-import type { Submission, DecisionResult } from "./services/submission";
+import type { Submission } from "./services/submission";
+
+import { calculateEmi as emi } from "./utils/finance";
+import { evaluateDemoEligibility } from "./services/demoEligibility";
 
 type Page = "home" | "calculator" | "apply" | "tracking" | "insights";
 type FormData = LoanForm;
 const formatINR = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
-const emi = (p: number, annual: number, months: number) => {
-  const r = annual / 1200;
-  return r === 0
-    ? p / months
-    : (p * r * Math.pow(1 + r, months)) / (Math.pow(1 + r, months) - 1);
-};
 const interest = demoPolicy.annualRate;
 const initial: FormData = {
   name: "",
@@ -81,10 +78,6 @@ function App() {
   function update<K extends keyof FormData>(key: K, value: FormData[K]) {
     setForm((f) => ({ ...f, [key]: value }));
   }
-  const request = Number(form.requested) || 0,
-    earning = Number(form.income) || 0,
-    existing = Number(form.existingEmi) || 0,
-    period = Number(form.tenure);
   function validateStep(fields: readonly (keyof FormData)[]): boolean {
     setAttempted(true);
     const invalid = firstInvalidField(form, fields);
@@ -97,29 +90,8 @@ function App() {
   }
   function decide() {
     if (!validateStep([...personalFields, ...financeFields])) return;
-    const projected = emi(request, interest, period);
-    const room = earning * demoPolicy.totalEmiRatio - existing;
-    const max = Math.max(0, Math.floor(room / emi(1, interest, period)));
-    let status: DecisionResult["status"], reason: string;
-    if (earning < demoPolicy.minimumIncome || request < demoPolicy.minimumAmount || request > demoPolicy.maximumAmount || room <= 0) {
-      status = "Outside demo criteria";
-      reason =
-        "The values entered fall outside the illustrative thresholds for this demo.";
-    } else if (projected <= room) {
-      status = "Preliminary eligible";
-      reason =
-        "Estimated EMI is within the demo affordability threshold. This is not an approval or an offer.";
-    } else {
-      status = "Manual review";
-      reason =
-        "The requested EMI exceeds the demo affordability threshold. A different amount or tenure may help.";
-    }
-    setDecision(snapshotSubmission(form, {
-      status,
-      reason,
-      maxAmount: max,
-      emi: projected,
-    }, crypto.randomUUID(), new Date().toISOString()));
+    setDecision(snapshotSubmission(form, evaluateDemoEligibility(form),
+      crypto.randomUUID(), new Date().toISOString()));
     setStep(3);
     setEvents((e) => ({ ...e, submitted: (e.submitted || 0) + 1 }));
   }

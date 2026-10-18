@@ -11,6 +11,8 @@
   "include": [
     "src/types/loan.ts",
     "src/utils/validation.ts",
-    "src/services/submission.ts"
+    "src/services/submission.ts",
+    "src/utils/finance.ts",
+    "src/services/demoEligibility.ts"
   ]
 }
