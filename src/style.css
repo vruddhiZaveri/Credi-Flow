@@ -13,3 +13,7 @@
 .field input[aria-invalid="true"]:focus {
   box-shadow: 0 0 0 3px rgb(217 45 32 / 12%);
 }
+
+.outcomeicon.review { background: #fff4d6; color: #946200; }
+.outcomeicon.outside { background: #fff0ee; color: #b42318; }
+.tracktop h2, .outcome .small-label { overflow-wrap: anywhere; }

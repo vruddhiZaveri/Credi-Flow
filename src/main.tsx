@@ -30,15 +30,11 @@ import "./style.css";
 import type { LoanForm, InputField } from "./types/loan";
 import { validateField, firstInvalidField, personalFields, financeFields, allowedTenures } from "./utils/validation";
 
+import { snapshotSubmission, demoPolicy } from "./services/submission";
+import type { Submission, DecisionResult } from "./services/submission";
+
 type Page = "home" | "calculator" | "apply" | "tracking" | "insights";
 type FormData = LoanForm;
-type Decision = {
-  status: "Preliminary eligible" | "Manual review" | "Outside demo criteria";
-  reason: string;
-  maxAmount: number;
-  emi: number;
-  id: string;
-};
 const formatINR = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
 const emi = (p: number, annual: number, months: number) => {
   const r = annual / 1200;
@@ -46,7 +42,7 @@ const emi = (p: number, annual: number, months: number) => {
     ? p / months
     : (p * r * Math.pow(1 + r, months)) / (Math.pow(1 + r, months) - 1);
 };
-const interest = 11.5;
+const interest = demoPolicy.annualRate;
 const initial: FormData = {
   name: "",
   email: "",
@@ -74,7 +70,7 @@ function App() {
   const [step, setStep] = useState(1);
   const [touched, setTouched] = useState<Partial<Record<keyof FormData, boolean>>>({});
   const [attempted, setAttempted] = useState(false);
-  const [decision, setDecision] = useState<Decision | null>(null);
+  const [decision, setDecision] = useState<Submission | null>(null);
   const [events, setEvents] = useState<Record<string, number>>({ homepage: 1 });
   function go(p: Page) {
     setPage(p);
@@ -102,10 +98,10 @@ function App() {
   function decide() {
     if (!validateStep([...personalFields, ...financeFields])) return;
     const projected = emi(request, interest, period);
-    const room = earning * 0.45 - existing;
+    const room = earning * demoPolicy.totalEmiRatio - existing;
     const max = Math.max(0, Math.floor(room / emi(1, interest, period)));
-    let status: Decision["status"], reason: string;
-    if (earning < 15000 || request < 25000 || request > 2500000 || room <= 0) {
+    let status: DecisionResult["status"], reason: string;
+    if (earning < demoPolicy.minimumIncome || request < demoPolicy.minimumAmount || request > demoPolicy.maximumAmount || room <= 0) {
       status = "Outside demo criteria";
       reason =
         "The values entered fall outside the illustrative thresholds for this demo.";
@@ -118,13 +114,12 @@ function App() {
       reason =
         "The requested EMI exceeds the demo affordability threshold. A different amount or tenure may help.";
     }
-    setDecision({
+    setDecision(snapshotSubmission(form, {
       status,
       reason,
       maxAmount: max,
       emi: projected,
-      id: "LF-DEMO-" + String(Date.now()).slice(-6),
-    });
+    }, crypto.randomUUID(), new Date().toISOString()));
     setStep(3);
     setEvents((e) => ({ ...e, submitted: (e.submitted || 0) + 1 }));
   }
@@ -399,6 +394,8 @@ const input = (
                     onClick={() => {
                       update("requested", String(amount));
                       update("tenure", String(months));
+                      setStep(firstInvalidField(form, personalFields) ? 1 : 2);
+                      setAttempted(false);
                       go("apply");
                     }}
                   >
@@ -609,18 +606,19 @@ const input = (
                   )}
                   {step === 3 && decision && (
                     <div className="outcome">
-                      <div className="outcomeicon">
-                        <CheckCircle2 size={36} />
+                      <div className={`outcomeicon ${decision.status === "Preliminary eligible" ? "" : decision.status === "Manual review" ? "review" : "outside"}`}>
+                        {decision.status === "Preliminary eligible" ? <CheckCircle2 size={36} /> : decision.status === "Manual review" ? <Clock3 size={36} /> : <AlertCircle size={36} />}
                       </div>
                       <div className="small-label">
                         APPLICATION REFERENCE · {decision.id}
                       </div>
                       <h2>{decision.status}</h2>
                       <p>{decision.reason}</p>
+                      <p>Submitted {new Date(decision.submittedAt).toLocaleString()} · Policy {decision.policy.version} · {decision.applicant.tenure} months at {decision.policy.annualRate}% p.a.</p>
                       <div className="outcome-grid">
                         <div>
                           <span>Requested amount</span>
-                          <b>{formatINR(request)}</b>
+                          <b>{formatINR(Number(decision.applicant.requested))}</b>
                         </div>
                         <div>
                           <span>Indicative monthly EMI</span>
@@ -642,7 +640,7 @@ const input = (
                           className="secondary"
                           onClick={() => {
                             setStep(2);
-                            setDecision(null);
+                            setAttempted(false);
                           }}
                         >
                           Edit details
@@ -673,7 +671,9 @@ const input = (
                     <div>
                       <span className="small-label">REFERENCE ID</span>
                       <h2>{decision.id}</h2>
-                      <p>Applicant: {form.name}</p>
+                      <p>Applicant: {decision.applicant.name}</p>
+                      <p>{formatINR(Number(decision.applicant.requested))} · {decision.applicant.tenure} months · EMI {formatINR(decision.emi)}</p>
+                      <p>Submitted {new Date(decision.submittedAt).toLocaleString()} · Policy {decision.policy.version}</p>
                     </div>
                     <span className="statebadge">{decision.status}</span>
                   </div>

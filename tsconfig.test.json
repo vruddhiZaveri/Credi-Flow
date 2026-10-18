@@ -8,5 +8,9 @@
     "outDir": ".test-build",
     "rootDir": "src"
   },
-  "include": ["src/types/loan.ts", "src/utils/validation.ts"]
+  "include": [
+    "src/types/loan.ts",
+    "src/utils/validation.ts",
+    "src/services/submission.ts"
+  ]
 }
